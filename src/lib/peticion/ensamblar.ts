@@ -5,25 +5,25 @@
  * Aquí viven los campos AUTORITATIVOS que NO dependen del modelo:
  *  - `tipo` (elegido por el usuario / categoría)
  *  - identificación del peticionario y firma (copiados del intake)
- *  - entidad destinataria (siempre la DIAN en el MVP)
+ *  - entidad destinataria (por defecto la DIAN; ver directorio de entidades)
  *  - la frase del término legal (construida con el número que fija el código)
  *  - un fundamento canónico (Art. 23 C.P. + Ley 1755 de 2015) siempre presente
  */
-import {
-  DocType,
-  ENTIDAD_DIAN,
-  PetitionTipo,
-  docTypeLabel,
-  terminoDias,
-} from '@/lib/legal/constants';
+import { entidadPorDefecto, terminoParaEntidad, type Entidad } from '@/lib/entidades';
+import { DocType, PetitionTipo, docTypeLabel } from '@/lib/legal/constants';
 import type {
   GeneratedContent,
   IntakeInput,
   PeticionDocument,
 } from '@/lib/schema/peticion';
 
-const FUNDAMENTO_CANONICO =
-  'El artículo 23 de la Constitución Política consagra el derecho fundamental de petición. La Ley 1755 de 2015 regula su ejercicio y fija los términos de respuesta a cargo de las autoridades, entre ellas la DIAN.';
+function fundamentoCanonico(nombreCortoEntidad: string): string {
+  return (
+    `El artículo 23 de la Constitución Política consagra el derecho fundamental de petición. ` +
+    `La Ley 1755 de 2015 regula su ejercicio y fija los términos de respuesta a cargo de las ` +
+    `autoridades, entre ellas la ${nombreCortoEntidad}.`
+  );
+}
 
 export function fraseTermino(dias: number): string {
   return (
@@ -40,9 +40,9 @@ export function firmaDocumento(docType: DocType, docNumber: string): string {
 }
 
 /** Garantiza que el fundamento canónico esté presente (una sola vez). */
-function conFundamentoCanonico(fundamentos: string[]): string[] {
+function conFundamentoCanonico(fundamentos: string[], nombreCortoEntidad: string): string[] {
   const yaCita = fundamentos.some((f) => /1755/.test(f) && /petici/i.test(f));
-  return yaCita ? fundamentos : [FUNDAMENTO_CANONICO, ...fundamentos];
+  return yaCita ? fundamentos : [fundamentoCanonico(nombreCortoEntidad), ...fundamentos];
 }
 
 export interface EnsamblarParams {
@@ -50,6 +50,8 @@ export interface EnsamblarParams {
   tipo: PetitionTipo;
   content: GeneratedContent;
   ciudadFecha: string;
+  /** Entidad destinataria. Por defecto, la entidad por defecto del MVP (DIAN). */
+  entidad?: Entidad;
 }
 
 export function ensamblarPeticion({
@@ -57,15 +59,16 @@ export function ensamblarPeticion({
   tipo,
   content,
   ciudadFecha,
+  entidad = entidadPorDefecto(),
 }: EnsamblarParams): PeticionDocument {
   const { peticionario } = input;
-  const dias = terminoDias(tipo);
+  const dias = terminoParaEntidad(entidad, tipo);
 
   return {
     tipo,
     ciudadFecha,
     destinatario: {
-      entidad: ENTIDAD_DIAN.nombre,
+      entidad: entidad.nombre,
       dependencia: content.dependenciaSugerida ?? '',
       ciudad: peticionario.ciudad,
     },
@@ -81,7 +84,7 @@ export function ensamblarPeticion({
     saludo: content.saludo || 'Respetados señores:',
     cuerpoIntro: content.cuerpoIntro ?? '',
     hechos: content.hechos,
-    fundamentos: conFundamentoCanonico(content.fundamentos),
+    fundamentos: conFundamentoCanonico(content.fundamentos, entidad.nombreCorto),
     peticiones: content.peticiones,
     solicitudRespuestaTermino: fraseTermino(dias),
     notificacion: {
